@@ -5,6 +5,7 @@ import { saveSettings as saveSettingsApi, setAutostart, isAutostartEnabled } fro
 export default function Settings({ onClose }: { onClose: () => void }) {
   const { settings, setSettings } = useAppStore();
   const [apiKey, setApiKey] = useState(settings.api_key);
+  const [platformToken, setPlatformToken] = useState(settings.platform_token);
   const [intervalMin, setIntervalMin] = useState(settings.interval_min);
   const [downloadsDir, setDownloadsDir] = useState(settings.downloads_dir);
   const [autostart, setAutostartState] = useState(false);
@@ -16,6 +17,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   async function handleSave() {
     const newSettings = {
       api_key: apiKey,
+      platform_token: platformToken,
       interval_min: intervalMin,
       downloads_dir: downloadsDir,
     };
@@ -41,6 +43,16 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="sk-..."
+        />
+      </div>
+
+      <div className="settings-field">
+        <label>Platform Token (userToken JWT)</label>
+        <input
+          type="password"
+          value={platformToken}
+          onChange={(e) => setPlatformToken(e.target.value)}
+          placeholder="eyJ..."
         />
       </div>
 

@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "./store";
 import type { Dashboard } from "./store";
 import {
   getDashboard,
   refresh as refreshCmd,
-  importCsv,
+  setAutostart,
+  isAutostartEnabled,
 } from "./api";
 import BalanceCard from "./components/BalanceCard";
 import CostCards from "./components/CostCards";
@@ -27,6 +27,9 @@ export default function App() {
   } = useAppStore();
 
   useEffect(() => {
+    // Ensure window stays off the taskbar at runtime (belt + suspenders with config).
+    getCurrentWindow().setSkipTaskbar(true);
+
     loadDashboard();
 
     const unlisteners: (() => void)[] = [];
@@ -39,12 +42,17 @@ export default function App() {
       handleRefresh();
     }).then((fn) => unlisteners.push(fn));
 
-    listen("menu-import", () => {
-      handleImport();
-    }).then((fn) => unlisteners.push(fn));
-
     listen("menu-settings", () => {
       setShowSettings(true);
+    }).then((fn) => unlisteners.push(fn));
+
+    listen("menu-autostart", async () => {
+      try {
+        const current = await isAutostartEnabled();
+        await setAutostart(!current);
+      } catch (e) {
+        console.error("Failed to toggle autostart:", e);
+      }
     }).then((fn) => unlisteners.push(fn));
 
     getCurrentWindow().onFocusChanged(({ payload: focused }) => {
@@ -54,7 +62,7 @@ export default function App() {
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && showSettings) {
+      if (e.key === "Escape" && useAppStore.getState().showSettings) {
         setShowSettings(false);
       }
     };
@@ -91,37 +99,20 @@ export default function App() {
     setLoading(false);
   }
 
-  async function handleImport() {
-    try {
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-      });
-      if (selected) {
-        await importCsv(selected as string);
-        const d = await getDashboard();
-        setDashboard(d);
-      }
-    } catch (e) {
-      console.error("Import failed:", e);
-    }
-  }
-
   return (
     <div className="app">
       <div className="titlebar">
-        <h1>DeepSeek Monitor</h1>
+        <div className="titlebar-left">
+          <span
+            className={`titlebar-dot ${dashboard?.available ? "online" : "offline"}`}
+          />
+          <span className="titlebar-label">
+            {dashboard?.available ? "DSM" : "Offline"}
+          </span>
+        </div>
         <div className="titlebar-actions">
-          {dashboard?.last_import_ts && (
-            <span className="freshness">
-              CSV: {dashboard.last_import_ts.slice(0, 16).replace("T", " ")}
-            </span>
-          )}
           <button onClick={handleRefresh} title="Refresh">
             &#x21bb;
-          </button>
-          <button onClick={handleImport} title="Import CSV">
-            &#x1F4C2;
           </button>
           <button onClick={() => setShowSettings(true)} title="Settings">
             &#x2699;

@@ -52,7 +52,6 @@ pub struct Dashboard {
     pub cache_miss_tokens: i64,
     pub cache_by_model: Vec<ModelUsage>,
     pub cache_by_source: Vec<CacheSource>,
-    pub last_import_ts: Option<String>,
 }
 
 impl Store {
@@ -79,10 +78,6 @@ impl Store {
                 cost TEXT NOT NULL,
                 currency TEXT NOT NULL DEFAULT 'CNY',
                 PRIMARY KEY (utc_date, model)
-            );
-            CREATE TABLE IF NOT EXISTS import_log (
-                file_path TEXT PRIMARY KEY,
-                imported_at TEXT NOT NULL
             );",
         )
         .map_err(|e| format!("Failed to init DB: {e}"))?;
@@ -327,14 +322,6 @@ impl Store {
             .filter_map(|r| r.ok())
             .collect();
 
-        let last_import_ts = conn
-            .query_row(
-                "SELECT imported_at FROM import_log ORDER BY imported_at DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .ok();
-
         Ok(Dashboard {
             balance,
             available,
@@ -347,30 +334,6 @@ impl Store {
             cache_miss_tokens,
             cache_by_model,
             cache_by_source,
-            last_import_ts,
         })
-    }
-
-    pub fn log_import(&self, file_path: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        conn.execute(
-            "INSERT OR REPLACE INTO import_log (file_path, imported_at) VALUES (?1, ?2)",
-            params![file_path, now],
-        )
-        .map_err(|e| format!("Log import: {e}"))?;
-        Ok(())
-    }
-
-    pub fn was_imported(&self, file_path: &str) -> Result<bool, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
-        let exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) > 0 FROM import_log WHERE file_path = ?1",
-                params![file_path],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-        Ok(exists)
     }
 }

@@ -1,12 +1,11 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, PhysicalPosition,
 };
 
-pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     let refresh_item = MenuItemBuilder::with_id("refresh", "Refresh").build(app)?;
-    let import_item = MenuItemBuilder::with_id("import", "Import CSV...").build(app)?;
     let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
     let autostart_item = MenuItemBuilder::with_id("autostart", "Auto Start").build(app)?;
     let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -14,24 +13,19 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let menu = MenuBuilder::new(app)
         .items(&[
             &refresh_item,
-            &import_item,
             &settings_item,
             &autostart_item,
             &quit_item,
         ])
         .build()?;
 
-    let _tray = TrayIconBuilder::new()
+    let tray = TrayIconBuilder::new()
         .menu(&menu)
         .tooltip("DeepSeek Monitor")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "refresh" => {
                 log::info!("Menu: refresh clicked");
                 let _ = app.emit("menu-refresh", ());
-            }
-            "import" => {
-                log::info!("Menu: import clicked");
-                let _ = app.emit("menu-import", ());
             }
             "settings" => {
                 log::info!("Menu: settings clicked");
@@ -43,7 +37,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             "quit" => {
                 log::info!("Menu: quit clicked");
-                std::process::exit(0);
+                app.exit(0);
             }
             _ => {}
         })
@@ -65,7 +59,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                             let scale = monitor.scale_factor();
                             let ws = window.outer_size().unwrap_or(tauri::PhysicalSize {
                                 width: 380,
-                                height: 640,
+                                height: 660,
                             });
                             let x = (size.width as f64 / scale - ws.width as f64 - 12.0).max(0.0);
                             let y = (size.height as f64 / scale - ws.height as f64 - 12.0).max(0.0);
@@ -80,5 +74,5 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
-    Ok(())
+    Ok(tray)
 }

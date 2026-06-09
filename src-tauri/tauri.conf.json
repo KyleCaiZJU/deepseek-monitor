@@ -14,7 +14,7 @@
       {
         "title": "DeepSeek Monitor",
         "width": 380,
-        "height": 640,
+        "height": 660,
         "resizable": false,
         "decorations": false,
         "transparent": true,
@@ -28,9 +28,9 @@
       "csp": null
     },
     "trayIcon": {
-      "iconPath": "icons/icon.ico",
-      "iconAsTemplate": true,
-      "tooltip": "DeepSeek Monitor"
+      "iconPath": "icons/tray-icon.png",
+      "tooltip": "DeepSeek Monitor",
+      "iconAsTemplate": false
     }
   },
   "bundle": {

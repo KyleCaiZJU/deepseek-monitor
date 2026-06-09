@@ -39,11 +39,11 @@ export interface Dashboard {
   cache_miss_tokens: number;
   cache_by_model: ModelUsage[];
   cache_by_source: CacheSource[];
-  last_import_ts: string | null;
 }
 
 export interface Settings {
   api_key: string;
+  platform_token: string;
   interval_min: number;
   downloads_dir: string;
 }
@@ -63,6 +63,7 @@ export const useAppStore = create<AppState>((set) => ({
   dashboard: null,
   settings: {
     api_key: "",
+    platform_token: "",
     interval_min: 5,
     downloads_dir: "",
   },

@@ -18,6 +18,12 @@ interface Props {
   trend: DayPoint[];
 }
 
+const CHART_COLORS = {
+  miss: "#fca5a5",
+  output: "#d6d3d1",
+  cache: "#0d9488",
+};
+
 export default function TrendChart({ trend }: Props) {
   const data = trend.map((d) => ({
     date: d.date.slice(5),
@@ -39,23 +45,26 @@ export default function TrendChart({ trend }: Props) {
         <BarChart data={data}>
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "#78716c", fontFamily: "var(--font-mono)" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "#78716c", fontFamily: "var(--font-mono)" }}
             axisLine={false}
             tickLine={false}
             tickFormatter={formatTokens}
+            width={40}
           />
           <Tooltip
             contentStyle={{
-              background: "rgba(24,24,30,0.95)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "#ffffff",
+              border: "1px solid rgba(0,0,0,0.08)",
               borderRadius: "8px",
               fontSize: "12px",
-              color: "#e4e4e7",
+              color: "#1a1a1a",
+              fontFamily: "var(--font-mono)",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
             }}
             formatter={(value: any, name: any) => [
               formatTokens(Number(value) || 0),
@@ -66,12 +75,12 @@ export default function TrendChart({ trend }: Props) {
                   : "Cache Miss",
             ]}
           />
-          <Bar dataKey="miss" stackId="a" fill="rgba(224,85,106,0.5)" />
-          <Bar dataKey="output" stackId="a" fill="rgba(255,255,255,0.3)" />
-          <Bar dataKey="cache" stackId="a" fill="rgba(29,158,117,0.5)" />
+          <Bar dataKey="miss" stackId="a" fill={CHART_COLORS.miss} radius={[0, 0, 0, 0]} />
+          <Bar dataKey="output" stackId="a" fill={CHART_COLORS.output} radius={[0, 0, 0, 0]} />
+          <Bar dataKey="cache" stackId="a" fill={CHART_COLORS.cache} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
-      <div className="trend-total">Total: {formatTokens(totalTokens)} tokens</div>
+      <div className="trend-total">Total {formatTokens(totalTokens)} tokens</div>
     </div>
   );
 }

@@ -1,15 +1,17 @@
 mod api;
 mod commands;
 mod csv_import;
+mod platform_api;
 mod store;
 mod tray;
-mod watcher;
 
 use std::sync::Arc;
 
 use commands::Settings;
 use store::Store;
-use tauri::{Emitter, Manager};
+use chrono::Datelike;
+use tauri::{Emitter, Manager, tray::TrayIcon};
+use tauri_plugin_store::StoreExt;
 
 pub struct SettingsState {
     pub settings: std::sync::Mutex<Settings>,
@@ -29,6 +31,11 @@ impl SettingsState {
     pub fn update(&self, s: Settings) {
         *self.settings.lock().unwrap() = s;
     }
+}
+
+/// Holds the system tray icon handle so the timer loop can update the tooltip.
+pub struct TrayIconState {
+    pub tray: std::sync::Mutex<Option<TrayIcon>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -63,64 +70,33 @@ pub fn run() {
             app.manage(SettingsState::new(cached_settings));
             app.manage(store.clone());
 
-            tray::create_tray(app.handle())?;
-
-            let downloads = std::path::PathBuf::from(&Settings::default().downloads_dir);
-            if let Ok((_watcher, rx)) = watcher::start_watching(downloads) {
-                let store_clone = store.clone();
-                let app_handle = app.handle().clone();
-                std::thread::spawn(move || loop {
-                    if let Some(event) = watcher::wait_stable(&rx, std::time::Duration::from_millis(500))
-                    {
-                        let path_str = event.path.to_string_lossy().to_string();
-                        if store_clone.was_imported(&path_str).unwrap_or(true) {
-                            continue;
-                        }
-                        let result: Result<csv_import::ImportResult, String> = match event.kind {
-                            watcher::CsvKind::Amount => {
-                                csv_import::parse_amount_csv(&event.path)
-                                    .map(|rows| {
-                                        let _ = store_clone.upsert_usage(&rows);
-                                        csv_import::ImportResult {
-                                            amount_rows: rows.len(),
-                                            cost_rows: 0,
-                                            skipped_amount: 0,
-                                            skipped_cost: 0,
-                                        }
-                                    })
-                            }
-                            watcher::CsvKind::Cost => {
-                                csv_import::parse_cost_csv(&event.path)
-                                    .map(|rows| {
-                                        let _ = store_clone.upsert_cost(&rows);
-                                        csv_import::ImportResult {
-                                            amount_rows: 0,
-                                            cost_rows: rows.len(),
-                                            skipped_amount: 0,
-                                            skipped_cost: 0,
-                                        }
-                                    })
-                            }
-                        };
-                        if let Ok(imp) = result {
-                            let _ = store_clone.log_import(&path_str);
-                            let _ = app_handle.emit("csv-imported", imp);
-                            if let Ok(dashboard) = store_clone.get_dashboard() {
-                                let _ = app_handle.emit("dashboard-updated", dashboard);
-                            }
-                        }
-                    }
-                });
+            // C01: Load persisted settings from disk
+            let store_handle = app.store("settings.json").map_err(|e| e.to_string())?;
+            if let Some(saved_json) = store_handle.get("settings") {
+                if let Ok(saved_settings) = serde_json::from_value::<Settings>(saved_json) {
+                    let state = app.state::<SettingsState>();
+                    state.update(saved_settings);
+                    log::info!("Loaded settings from persistent store");
+                }
             }
+
+            let tray_icon = tray::create_tray(app.handle())?;
+            app.manage(TrayIconState {
+                tray: std::sync::Mutex::new(Some(tray_icon)),
+            });
 
             let store_clone = store.clone();
             let app_handle = app.handle().clone();
+            let last_platform_fetch: Arc<std::sync::Mutex<Option<chrono::DateTime<chrono::Utc>>>> =
+                Arc::new(std::sync::Mutex::new(None));
             tauri::async_runtime::spawn(async move {
-                let settings = Settings::default();
-                let interval = settings.interval_min.max(1);
                 loop {
+                    let settings = app_handle.state::<SettingsState>().get();
+                    let interval = settings.interval_min.max(1);
                     tokio::time::sleep(tokio::time::Duration::from_secs(interval * 60)).await;
 
+                    // Re-read settings in case they changed during sleep
+                    let settings = app_handle.state::<SettingsState>().get();
                     let api_key = settings.api_key.clone();
                     if api_key.is_empty() {
                         continue;
@@ -139,10 +115,106 @@ pub fn run() {
                                 );
                                 let bal: f64 = info.total_balance.parse().unwrap_or(0.0);
                                 let _ = app_handle.emit("balance-updated", bal);
+
+                                // C05: Update tray tooltip with live balance
+                                let tray_state = app_handle.state::<TrayIconState>();
+                                let guard = tray_state.tray.lock().unwrap();
+                                if let Some(tray) = guard.as_ref() {
+                                    let tooltip = format!("Balance ¥{:.2}", bal);
+                                    let _ = tray.set_tooltip(Some(&tooltip));
+                                }
                             }
                         }
                         Err(e) => {
                             log::warn!("Timer balance fetch failed: {e}");
+                        }
+                    }
+
+                    // Platform usage: fetch every 30 minutes if token is set
+                    let platform_token = settings.platform_token.clone();
+                    if !platform_token.is_empty() {
+                        let should_fetch = {
+                            let guard = last_platform_fetch.lock().unwrap();
+                            guard.map_or(true, |last| {
+                                let elapsed = chrono::Utc::now() - last;
+                                elapsed.num_minutes() >= 30
+                            })
+                        };
+                        if should_fetch {
+                            let now = chrono::Utc::now();
+                            let month = now.month();
+                            let year = now.year();
+
+                            // Fetch cost data
+                            match platform_api::fetch_platform_usage(&platform_token, month, year).await
+                            {
+                                Ok(entries) => {
+                                    let count = entries.len();
+                                    let rows: Vec<csv_import::CostRow> = entries
+                                        .into_iter()
+                                        .map(|e| {
+                                            let date = chrono::NaiveDate::parse_from_str(
+                                                &e.utc_date, "%Y-%m-%d",
+                                            )
+                                            .unwrap_or_else(|_| {
+                                                chrono::NaiveDate::from_ymd_opt(year, month, 1)
+                                                    .unwrap()
+                                            });
+                                            let cost: rust_decimal::Decimal =
+                                                e.cost.parse().unwrap_or_default();
+                                            csv_import::CostRow {
+                                                user_id: String::new(),
+                                                utc_date: date,
+                                                model: e.model,
+                                                wallet_type: String::new(),
+                                                cost,
+                                                currency: e.currency,
+                                            }
+                                        })
+                                        .collect();
+                                    let _ = store_clone.upsert_cost(&rows);
+                                    log::info!("Timer: upserted {} platform cost rows", count);
+                                }
+                                Err(e) => {
+                                    log::warn!("Timer platform cost fetch failed: {e}");
+                                }
+                            }
+
+                            // Fetch amount (token / request count) data
+                            match platform_api::fetch_amount(&platform_token, month, year).await {
+                                Ok(entries) => {
+                                    let count = entries.len();
+                                    let rows: Vec<csv_import::AmountRow> = entries
+                                        .into_iter()
+                                        .map(|e| {
+                                            let date = chrono::NaiveDate::parse_from_str(
+                                                &e.utc_date, "%Y-%m-%d",
+                                            )
+                                            .unwrap_or_else(|_| {
+                                                chrono::NaiveDate::from_ymd_opt(year, month, 1)
+                                                    .unwrap()
+                                            });
+                                            csv_import::AmountRow {
+                                                user_id: String::new(),
+                                                utc_date: date,
+                                                model: e.model,
+                                                api_key_name: "all".to_string(),
+                                                api_key: String::new(),
+                                                r#type: e.db_type,
+                                                price: None,
+                                                amount: e.amount,
+                                            }
+                                        })
+                                        .collect();
+                                    let _ = store_clone.upsert_usage(&rows);
+                                    log::info!("Timer: upserted {} platform usage rows", count);
+                                }
+                                Err(e) => {
+                                    log::warn!("Timer platform amount fetch failed: {e}");
+                                }
+                            }
+
+                            *last_platform_fetch.lock().unwrap() = Some(chrono::Utc::now());
                         }
                     }
 
@@ -157,7 +229,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_dashboard,
             commands::refresh,
-            commands::import_csv,
+            commands::fetch_platform_usage,
             commands::get_settings,
             commands::save_settings,
             commands::set_autostart,
@@ -169,6 +241,11 @@ pub fn run() {
 
 fn dirs_data_dir() -> String {
     std::env::var("APPDATA")
-        .map(|p| format!("{}\\deepseek-monitor", p))
+        .map(|p| {
+            std::path::Path::new(&p)
+                .join("deepseek-monitor")
+                .to_string_lossy()
+                .to_string()
+        })
         .unwrap_or_else(|_| ".".into())
 }

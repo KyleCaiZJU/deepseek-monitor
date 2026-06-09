@@ -9,15 +9,6 @@ export async function refresh(): Promise<Dashboard> {
   return invoke("refresh");
 }
 
-export async function importCsv(path: string): Promise<{
-  amount_rows: number;
-  cost_rows: number;
-  skipped_amount: number;
-  skipped_cost: number;
-}> {
-  return invoke("import_csv", { path });
-}
-
 export async function getSettings(): Promise<Settings> {
   return invoke("get_settings");
 }
@@ -32,4 +23,8 @@ export async function setAutostart(on: boolean): Promise<void> {
 
 export async function isAutostartEnabled(): Promise<boolean> {
   return invoke("is_autostart_enabled");
+}
+
+export async function fetchPlatformUsage(): Promise<void> {
+  return invoke("fetch_platform_usage");
 }
