@@ -3,6 +3,7 @@
 常驻 Windows 系统托盘的小工具，实时监控 DeepSeek API 账户余额、消费金额、Token 用量和缓存命中率。
 
 ![面板预览](screenshots/panel.png)
+![面板预览](screenshots/panel2.png)
 ![设置页面](screenshots/settings.png)
 
 ## 功能
