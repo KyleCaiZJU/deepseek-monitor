@@ -5,9 +5,11 @@ import { useAppStore } from "./store";
 import type { Dashboard } from "./store";
 import {
   getDashboard,
+  getSettings,
   refresh as refreshCmd,
   setAutostart,
   isAutostartEnabled,
+  fetchPlatformUsage,
 } from "./api";
 import BalanceCard from "./components/BalanceCard";
 import CostCards from "./components/CostCards";
@@ -24,6 +26,7 @@ export default function App() {
     setDashboard,
     setShowSettings,
     setLoading,
+    setSettings,
   } = useAppStore();
 
   useEffect(() => {
@@ -31,6 +34,20 @@ export default function App() {
     getCurrentWindow().setSkipTaskbar(true);
 
     loadDashboard();
+
+    // C12: Load settings from backend into zustand on startup
+    // Issue 2: After loading settings, trigger platform data fetch + reload dashboard
+    getSettings().then(async (s) => {
+      setSettings(s);
+      if (s.platform_token) {
+        try {
+          await fetchPlatformUsage();
+          await loadDashboard();
+        } catch (e) {
+          console.error("Initial platform fetch failed:", e);
+        }
+      }
+    }).catch(console.error);
 
     const unlisteners: (() => void)[] = [];
 
@@ -107,22 +124,28 @@ export default function App() {
             className={`titlebar-dot ${dashboard?.available ? "online" : "offline"}`}
           />
           <span className="titlebar-label">
-            {dashboard?.available ? "DSM" : "Offline"}
+            {dashboard?.available ? 'DeepSeek 监控' : '离线'}
           </span>
         </div>
         <div className="titlebar-actions">
-          <button onClick={handleRefresh} title="Refresh">
-            &#x21bb;
+          <button onClick={handleRefresh} title={'刷新'} className="btn-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
           </button>
-          <button onClick={() => setShowSettings(true)} title="Settings">
-            &#x2699;
+          <button onClick={() => setShowSettings(true)} title={'设置'} className="btn-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
           </button>
         </div>
       </div>
 
       <div className="content">
         {!dashboard ? (
-          <div className="empty-state">Loading...</div>
+          <div className="empty-state">{'加载中...'}</div>
         ) : (
           <>
             <BalanceCard

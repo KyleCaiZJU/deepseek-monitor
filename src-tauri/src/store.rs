@@ -37,6 +37,8 @@ pub struct CacheSource {
     pub hit_tokens: i64,
     pub miss_tokens: i64,
     pub hit_rate: f64,
+    pub cost: f64,
+    pub cost_pct: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,7 +203,7 @@ impl Store {
                         COALESCE(SUM(CASE WHEN type='input_cache_hit_tokens' THEN amount ELSE 0 END), 0),
                         COALESCE(SUM(CASE WHEN type='input_cache_miss_tokens' THEN amount ELSE 0 END), 0),
                         COALESCE(SUM(CASE WHEN type='request_count' THEN amount ELSE 0 END), 0),
-                        COALESCE((SELECT CAST(cost AS REAL) FROM cost WHERE utc_date = ?1 LIMIT 1), 0)
+                        COALESCE((SELECT SUM(CAST(cost AS REAL)) FROM cost WHERE utc_date = ?1), 0)
                      FROM usage WHERE utc_date = ?1",
                     params![date_str],
                     |row| {
@@ -298,29 +300,40 @@ impl Store {
                     api_key_name,
                     COALESCE(SUM(CASE WHEN type='request_count' THEN amount ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN type='input_cache_hit_tokens' THEN amount ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN type='input_cache_miss_tokens' THEN amount ELSE 0 END), 0)
+                    COALESCE(SUM(CASE WHEN type='input_cache_miss_tokens' THEN amount ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN price IS NOT NULL AND price != '' THEN CAST(amount AS REAL) * CAST(price AS REAL) ELSE 0 END), 0)
                  FROM usage
                  GROUP BY api_key_name",
             )
             .map_err(|e| format!("Query sources: {e}"))?;
 
-        let cache_by_source: Vec<CacheSource> = src_stmt
+        let mut cache_by_source: Vec<CacheSource> = src_stmt
             .query_map([], |row| {
                 let hit: i64 = row.get(2)?;
                 let miss: i64 = row.get(3)?;
                 let total = hit + miss;
                 let rate = if total > 0 { hit as f64 / total as f64 } else { 0.0 };
+                let cost: f64 = row.get(4)?;
                 Ok(CacheSource {
                     api_key_name: row.get(0)?,
                     request_count: row.get(1)?,
                     hit_tokens: hit,
                     miss_tokens: miss,
                     hit_rate: rate,
+                    cost,
+                    cost_pct: 0.0,
                 })
             })
             .map_err(|e| format!("Query sources: {e}"))?
             .filter_map(|r| r.ok())
             .collect();
+
+        let total_source_cost: f64 = cache_by_source.iter().map(|s| s.cost).sum();
+        if total_source_cost > 0.0 {
+            for s in &mut cache_by_source {
+                s.cost_pct = s.cost / total_source_cost * 100.0;
+            }
+        }
 
         Ok(Dashboard {
             balance,

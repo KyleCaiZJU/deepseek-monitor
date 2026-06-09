@@ -25,6 +25,8 @@ export interface CacheSource {
   hit_tokens: number;
   miss_tokens: number;
   hit_rate: number;
+  cost: number;
+  cost_pct: number;
 }
 
 export interface Dashboard {

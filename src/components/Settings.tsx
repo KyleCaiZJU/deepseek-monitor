@@ -7,25 +7,31 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [apiKey, setApiKey] = useState(settings.api_key);
   const [platformToken, setPlatformToken] = useState(settings.platform_token);
   const [intervalMin, setIntervalMin] = useState(settings.interval_min);
-  const [downloadsDir, setDownloadsDir] = useState(settings.downloads_dir);
   const [autostart, setAutostartState] = useState(false);
+
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     isAutostartEnabled().then(setAutostartState).catch(() => {});
   }, []);
 
   async function handleSave() {
+    setError(null);
     const newSettings = {
       api_key: apiKey,
       platform_token: platformToken,
       interval_min: intervalMin,
-      downloads_dir: downloadsDir,
+      downloads_dir: settings.downloads_dir,
     };
-    await saveSettingsApi(newSettings);
-    setSettings(newSettings);
-
-    await setAutostart(autostart);
-    onClose();
+    try {
+      await saveSettingsApi(newSettings);
+      setSettings(newSettings);
+      await setAutostart(autostart);
+      onClose();
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+      setError(String(e));
+    }
   }
 
   function handleAutostartToggle() {
@@ -34,10 +40,13 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="settings-overlay">
-      <h2>Settings</h2>
+      <h2>{'设置'}</h2>
 
       <div className="settings-field">
-        <label>API Key</label>
+        <label>
+          {'API Key'}
+          <span className="field-hint">{'用于查询账户总余额（非分 Key 追踪）'}</span>
+        </label>
         <input
           type="password"
           value={apiKey}
@@ -47,7 +56,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="settings-field">
-        <label>Platform Token (userToken JWT)</label>
+        <label>{'平台 Token'}</label>
         <input
           type="password"
           value={platformToken}
@@ -57,7 +66,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="settings-field">
-        <label>Refresh Interval (minutes)</label>
+        <label>{'刷新间隔（分钟）'}</label>
         <input
           type="number"
           value={intervalMin}
@@ -67,29 +76,22 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         />
       </div>
 
-      <div className="settings-field">
-        <label>Downloads Directory</label>
-        <input
-          type="text"
-          value={downloadsDir}
-          onChange={(e) => setDownloadsDir(e.target.value)}
-        />
-      </div>
-
       <div className="settings-toggle">
-        <span>Launch at Startup</span>
+        <span>{'开机自启'}</span>
         <button
           className={`toggle-switch ${autostart ? "on" : ""}`}
           onClick={handleAutostartToggle}
         />
       </div>
 
+      {error && <div className="settings-error">{error}</div>}
+
       <div className="settings-actions">
         <button className="btn" onClick={onClose}>
-          Cancel
+          {'取消'}
         </button>
         <button className="btn primary" onClick={handleSave}>
-          Save
+          {'保存'}
         </button>
       </div>
     </div>

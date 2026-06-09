@@ -90,6 +90,23 @@ pub fn run() {
             let last_platform_fetch: Arc<std::sync::Mutex<Option<chrono::DateTime<chrono::Utc>>>> =
                 Arc::new(std::sync::Mutex::new(None));
             tauri::async_runtime::spawn(async move {
+                // Issue 2: Initial platform data fetch at startup (don't wait for timer)
+                {
+                    let settings = app_handle.state::<SettingsState>().get();
+                    let token = settings.platform_token.clone();
+                    if !token.is_empty() {
+                        let store_state = app_handle.state::<Arc<Store>>();
+                        match commands::fetch_platform_usage(app_handle.clone(), store_state).await {
+                            Ok(()) => {
+                                *last_platform_fetch.lock().unwrap() = Some(chrono::Utc::now());
+                                log::info!("Initial platform data fetch completed at startup");
+                            }
+                            Err(e) => {
+                                log::warn!("Initial platform data fetch failed: {e}");
+                            }
+                        }
+                    }
+                }
                 loop {
                     let settings = app_handle.state::<SettingsState>().get();
                     let interval = settings.interval_min.max(1);
@@ -120,7 +137,7 @@ pub fn run() {
                                 let tray_state = app_handle.state::<TrayIconState>();
                                 let guard = tray_state.tray.lock().unwrap();
                                 if let Some(tray) = guard.as_ref() {
-                                    let tooltip = format!("Balance ¥{:.2}", bal);
+                                    let tooltip = format!("余额 ¥{:.2}", bal);
                                     let _ = tray.set_tooltip(Some(&tooltip));
                                 }
                             }
@@ -145,72 +162,24 @@ pub fn run() {
                             let month = now.month();
                             let year = now.year();
 
-                            // Fetch cost data
-                            match platform_api::fetch_platform_usage(&platform_token, month, year).await
+                            // Fetch usage data from export ZIP (cost + per-key amount in one request)
+                            match platform_api::fetch_export_zip(&platform_token, month, year).await
                             {
-                                Ok(entries) => {
-                                    let count = entries.len();
-                                    let rows: Vec<csv_import::CostRow> = entries
-                                        .into_iter()
-                                        .map(|e| {
-                                            let date = chrono::NaiveDate::parse_from_str(
-                                                &e.utc_date, "%Y-%m-%d",
-                                            )
-                                            .unwrap_or_else(|_| {
-                                                chrono::NaiveDate::from_ymd_opt(year, month, 1)
-                                                    .unwrap()
-                                            });
-                                            let cost: rust_decimal::Decimal =
-                                                e.cost.parse().unwrap_or_default();
-                                            csv_import::CostRow {
-                                                user_id: String::new(),
-                                                utc_date: date,
-                                                model: e.model,
-                                                wallet_type: String::new(),
-                                                cost,
-                                                currency: e.currency,
-                                            }
-                                        })
-                                        .collect();
-                                    let _ = store_clone.upsert_cost(&rows);
-                                    log::info!("Timer: upserted {} platform cost rows", count);
+                                Ok((amount_rows, cost_rows)) => {
+                                    let ac = amount_rows.len();
+                                    let cc = cost_rows.len();
+                                    if ac > 0 {
+                                        let _ = store_clone.upsert_usage(&amount_rows);
+                                    }
+                                    if cc > 0 {
+                                        let _ = store_clone.upsert_cost(&cost_rows);
+                                    }
+                                    log::info!(
+                                        "Timer: export ZIP upserted {ac} amount + {cc} cost rows"
+                                    );
                                 }
                                 Err(e) => {
-                                    log::warn!("Timer platform cost fetch failed: {e}");
-                                }
-                            }
-
-                            // Fetch amount (token / request count) data
-                            match platform_api::fetch_amount(&platform_token, month, year).await {
-                                Ok(entries) => {
-                                    let count = entries.len();
-                                    let rows: Vec<csv_import::AmountRow> = entries
-                                        .into_iter()
-                                        .map(|e| {
-                                            let date = chrono::NaiveDate::parse_from_str(
-                                                &e.utc_date, "%Y-%m-%d",
-                                            )
-                                            .unwrap_or_else(|_| {
-                                                chrono::NaiveDate::from_ymd_opt(year, month, 1)
-                                                    .unwrap()
-                                            });
-                                            csv_import::AmountRow {
-                                                user_id: String::new(),
-                                                utc_date: date,
-                                                model: e.model,
-                                                api_key_name: "all".to_string(),
-                                                api_key: String::new(),
-                                                r#type: e.db_type,
-                                                price: None,
-                                                amount: e.amount,
-                                            }
-                                        })
-                                        .collect();
-                                    let _ = store_clone.upsert_usage(&rows);
-                                    log::info!("Timer: upserted {} platform usage rows", count);
-                                }
-                                Err(e) => {
-                                    log::warn!("Timer platform amount fetch failed: {e}");
+                                    log::warn!("Timer export ZIP fetch failed: {e}");
                                 }
                             }
 

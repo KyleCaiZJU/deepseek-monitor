@@ -8,7 +8,7 @@ export default function BalanceCard({ balance, available }: Props) {
     <div className="card balance-card">
       <div className="balance-status">
         <span className={`balance-dot ${available ? "online" : "offline"}`} />
-        <span>{available ? "Available" : "Offline"}</span>
+        <span>{available ? "在线" : "离线"}</span>
       </div>
       <div className="balance-amount">
         <span className="balance-currency">¥</span>

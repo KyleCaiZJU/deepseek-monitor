@@ -5,7 +5,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 
 use crate::api;
-use crate::csv_import;
 use crate::platform_api;
 use crate::store::{Dashboard, Store};
 
@@ -99,60 +98,21 @@ pub async fn fetch_platform_usage(
     let month = now.month();
     let year = now.year();
 
-    // Fetch cost data
-    match platform_api::fetch_platform_usage(&token, month, year).await {
-        Ok(entries) => {
-            let count = entries.len();
-            let rows: Vec<csv_import::CostRow> = entries
-                .into_iter()
-                .map(|e| {
-                    let date = chrono::NaiveDate::parse_from_str(&e.utc_date, "%Y-%m-%d")
-                        .unwrap_or_else(|_| chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap());
-                    let cost: rust_decimal::Decimal = e.cost.parse().unwrap_or_default();
-                    csv_import::CostRow {
-                        user_id: String::new(),
-                        utc_date: date,
-                        model: e.model,
-                        wallet_type: String::new(),
-                        cost,
-                        currency: e.currency,
-                    }
-                })
-                .collect();
-            store.upsert_cost(&rows)?;
-            log::info!("Platform API: upserted {count} cost rows");
+    // Fetch usage data from the export ZIP (gives both cost and per-key amount in one request)
+    match platform_api::fetch_export_zip(&token, month, year).await {
+        Ok((amount_rows, cost_rows)) => {
+            let ac = amount_rows.len();
+            let cc = cost_rows.len();
+            if ac > 0 {
+                store.upsert_usage(&amount_rows)?;
+            }
+            if cc > 0 {
+                store.upsert_cost(&cost_rows)?;
+            }
+            log::info!("Platform export ZIP: upserted {ac} amount + {cc} cost rows");
         }
         Err(e) => {
-            log::warn!("Platform API cost fetch failed: {e}");
-        }
-    }
-
-    // Fetch amount (token / request count) data
-    match platform_api::fetch_amount(&token, month, year).await {
-        Ok(entries) => {
-            let count = entries.len();
-            let rows: Vec<csv_import::AmountRow> = entries
-                .into_iter()
-                .map(|e| {
-                    let date = chrono::NaiveDate::parse_from_str(&e.utc_date, "%Y-%m-%d")
-                        .unwrap_or_else(|_| chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap());
-                    csv_import::AmountRow {
-                        user_id: String::new(),
-                        utc_date: date,
-                        model: e.model,
-                        api_key_name: "all".to_string(),
-                        api_key: String::new(),
-                        r#type: e.db_type,
-                        price: None,
-                        amount: e.amount,
-                    }
-                })
-                .collect();
-            store.upsert_usage(&rows)?;
-            log::info!("Platform API: upserted {count} usage rows");
-        }
-        Err(e) => {
-            log::warn!("Platform API amount fetch failed: {e}");
+            log::warn!("Platform export ZIP fetch failed: {e}");
         }
     }
 
@@ -181,11 +141,44 @@ pub async fn save_settings(
     if let Some(state) = app.try_state::<crate::SettingsState>() {
         state.update(settings.clone());
     }
+
     // C01: Persist to disk via tauri-plugin-store
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
     let value = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
     store.set("settings", value);
     store.save().map_err(|e| e.to_string())?;
+
+    // C13: Verify the save was successful by reading back
+    if let Some(saved) = store.get("settings") {
+        let verified = serde_json::from_value::<Settings>(saved).is_ok();
+        log::info!(
+            "Settings saved via plugin-store. Verified: {verified}. api_key set: {}",
+            !settings.api_key.is_empty()
+        );
+        if !verified {
+            return Err("Settings save verification failed: could not deserialize saved value".into());
+        }
+    } else {
+        log::warn!("Settings save verification: key 'settings' not found after save");
+    }
+
+    // C13: Dual-path persistence -- also write to plain JSON file alongside the DB
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let backup_dir = std::path::Path::new(&appdata).join("deepseek-monitor");
+        let _ = std::fs::create_dir_all(&backup_dir);
+        let backup_path = backup_dir.join("settings.json");
+        match serde_json::to_string_pretty(&settings) {
+            Ok(json_str) => {
+                if let Err(e) = std::fs::write(&backup_path, &json_str) {
+                    log::warn!("Failed to write backup settings.json: {e}");
+                } else {
+                    log::info!("Backup settings.json written to {}", backup_path.display());
+                }
+            }
+            Err(e) => log::warn!("Failed to serialize settings for backup: {e}"),
+        }
+    }
+
     Ok(())
 }
 

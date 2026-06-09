@@ -14,6 +14,12 @@ interface Props {
   dashboard: Dashboard;
 }
 
+function rateClassSource(rate: number): string {
+  if (rate >= 0.8) return "good";
+  if (rate >= 0.4) return "warn";
+  return "bad";
+}
+
 export default function CacheHitPanel({ dashboard }: Props) {
   const {
     cache_overall_rate,
@@ -25,7 +31,7 @@ export default function CacheHitPanel({ dashboard }: Props) {
 
   return (
     <div className="card">
-      <div className="section-title">Cache Hit Rate</div>
+      <div className="section-title">{'缓存命中率'}</div>
 
       {/* Overall */}
       <div className="cache-overall">
@@ -39,7 +45,7 @@ export default function CacheHitPanel({ dashboard }: Props) {
           />
         </div>
         <div className="cache-tokens">
-          Hit: {fmt(cache_hit_tokens)} / Miss: {fmt(cache_miss_tokens)}
+          {'命中'}: {fmt(cache_hit_tokens)} / {'未命中'}: {fmt(cache_miss_tokens)}
         </div>
       </div>
 
@@ -47,7 +53,7 @@ export default function CacheHitPanel({ dashboard }: Props) {
       {cache_by_model.length > 0 && (
         <>
           <div style={{ marginTop: 10 }}>
-            <div className="section-title">By Model</div>
+            <div className="section-title">{'按模型'}</div>
           </div>
           <div className="cache-models">
             {cache_by_model.map((m) => (
@@ -70,27 +76,33 @@ export default function CacheHitPanel({ dashboard }: Props) {
         </>
       )}
 
-      {/* By source */}
+      {/* By source (api key) */}
       {cache_by_source.length > 0 && (
         <>
           <div style={{ marginTop: 10 }}>
-            <div className="section-title">By Source</div>
+            <div className="section-title">{'按来源'}</div>
           </div>
           <table className="source-table">
             <thead>
               <tr>
-                <th>Source</th>
-                <th>Requests</th>
-                <th>Hit Rate</th>
+                <th>{'密钥'}</th>
+                <th style={{ textAlign: "right" }}>{'请求'}</th>
+                <th style={{ textAlign: "right" }}>{'花费'}</th>
+                <th style={{ textAlign: "right" }}>{'占比'}</th>
+                <th style={{ textAlign: "right" }}>{'命中率'}</th>
               </tr>
             </thead>
             <tbody>
               {cache_by_source.map((s) => (
                 <tr key={s.api_key_name}>
                   <td>{s.api_key_name}</td>
-                  <td>{s.request_count}</td>
-                  <td className={`source-rate ${rateClass(s.hit_rate)}`}>
-                    {(s.hit_rate * 100).toFixed(1)}%
+                  <td style={{ textAlign: "right" }}>{fmt(s.request_count)}</td>
+                  <td style={{ textAlign: "right" }}>¥{s.cost.toFixed(2)}</td>
+                  <td style={{ textAlign: "right" }}>{s.cost_pct.toFixed(1)}%</td>
+                  <td style={{ textAlign: "right" }}>
+                    <span className={`source-rate ${rateClassSource(s.hit_rate)}`}>
+                      {(s.hit_rate * 100).toFixed(1)}%
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -98,6 +110,7 @@ export default function CacheHitPanel({ dashboard }: Props) {
           </table>
         </>
       )}
+
     </div>
   );
 }

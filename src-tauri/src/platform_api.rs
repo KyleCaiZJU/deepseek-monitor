@@ -1,6 +1,9 @@
 use rust_decimal::Decimal;
 use std::collections::BTreeMap;
+use std::io::{Cursor, Read};
 use std::str::FromStr;
+
+use crate::csv_import::{self, AmountRow, CostRow};
 
 /// A single cost entry extracted from the platform API response.
 pub struct CostEntry {
@@ -350,4 +353,105 @@ pub async fn fetch_amount(
     }
 
     Ok(entries)
+}
+
+/// Download the platform usage export ZIP, extract both CSV files, and parse them.
+///
+/// Endpoint: GET https://platform.deepseek.com/api/v0/usage/export?month=MM&year=YYYY
+/// Returns: ZIP containing `cost-YYYY-M.csv` and `amount-YYYY-M.csv`
+///
+/// The amount CSV has a per-key `api_key_name` column, giving us the data needed
+/// for the "by source" cache-hit breakdown that the separate amount API lacks.
+pub async fn fetch_export_zip(
+    token: &str,
+    month: u32,
+    year: i32,
+) -> Result<(Vec<AmountRow>, Vec<CostRow>), String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Build client: {e}"))?;
+
+    let url = format!(
+        "https://platform.deepseek.com/api/v0/usage/export?month={:02}&year={}",
+        month, year
+    );
+
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        )
+        .header("Referer", "https://platform.deepseek.com/usage")
+        .send()
+        .await
+        .map_err(|e| format!("Export request failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("Export HTTP {}", status));
+    }
+
+    let zip_bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Read ZIP body: {e}"))?;
+
+    log::info!(
+        "Export ZIP downloaded: {} bytes for {}-{:02}",
+        zip_bytes.len(),
+        year,
+        month
+    );
+
+    let cursor = Cursor::new(zip_bytes);
+    let mut archive =
+        zip::ZipArchive::new(cursor).map_err(|e| format!("Open ZIP: {e}"))?;
+
+    // The ZIP file names use month without leading zero: cost-2026-6.csv
+    let amount_name = format!("amount-{}-{}.csv", year, month);
+    let cost_name = format!("cost-{}-{}.csv", year, month);
+
+    let mut amount_rows: Vec<AmountRow> = Vec::new();
+    let mut cost_rows: Vec<CostRow> = Vec::new();
+
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Read ZIP entry {i}: {e}"))?;
+        let fname = file.name().to_string();
+
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(|e| format!("Read {fname} from ZIP: {e}"))?;
+
+        // CSV files from the platform have UTF-8 BOM + CRLF line endings
+        let content = String::from_utf8(buf).map_err(|e| format!("{fname} not UTF-8: {e}"))?;
+
+        if fname == amount_name || fname.contains("amount-") {
+            match csv_import::parse_amount_csv_content(&content) {
+                Ok(rows) => {
+                    log::info!("Parsed {} amount rows from {}", rows.len(), fname);
+                    amount_rows = rows;
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse {}: {}", fname, e);
+                }
+            }
+        } else if fname == cost_name || fname.contains("cost-") {
+            match csv_import::parse_cost_csv_content(&content) {
+                Ok(rows) => {
+                    log::info!("Parsed {} cost rows from {}", rows.len(), fname);
+                    cost_rows = rows;
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse {}: {}", fname, e);
+                }
+            }
+        }
+    }
+
+    Ok((amount_rows, cost_rows))
 }

@@ -39,7 +39,12 @@ fn strip_bom(content: &str) -> &str {
 
 pub fn parse_amount_csv(path: &Path) -> Result<Vec<AmountRow>, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("Failed to read amount CSV: {e}"))?;
-    let content = strip_bom(&raw);
+    parse_amount_csv_content(&raw)
+}
+
+/// Parse amount CSV from in-memory content (handles BOM, CRLF, etc.).
+pub fn parse_amount_csv_content(content: &str) -> Result<Vec<AmountRow>, String> {
+    let content = strip_bom(content);
 
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
@@ -88,7 +93,12 @@ pub fn parse_amount_csv(path: &Path) -> Result<Vec<AmountRow>, String> {
 
 pub fn parse_cost_csv(path: &Path) -> Result<Vec<CostRow>, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("Failed to read cost CSV: {e}"))?;
-    let content = strip_bom(&raw);
+    parse_cost_csv_content(&raw)
+}
+
+/// Parse cost CSV from in-memory content (handles BOM, CRLF, etc.).
+pub fn parse_cost_csv_content(content: &str) -> Result<Vec<CostRow>, String> {
+    let content = strip_bom(content);
 
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
@@ -188,13 +198,13 @@ mod tests {
     #[test]
     fn test_cache_hit_rate_v4_pro_june1() {
         let csv = "user_id,utc_date,model,api_key_name,api_key,type,price,amount\n\
-                        X,2026-06-01,deepseek-v4-pro,ccc,sk-1181a...,input_cache_hit_tokens,0.000000025,237281408\n\
-                        X,2026-06-01,deepseek-v4-pro,ccc,sk-1181a...,input_cache_miss_tokens,0.000003,9459428\n\
-                        X,2026-06-01,deepseek-v4-pro,ccc,sk-3b195...,input_cache_hit_tokens,0.000000025,58469248\n\
-                        X,2026-06-01,deepseek-v4-pro,ccc,sk-3b195...,input_cache_miss_tokens,0.000003,4743424\n\
-                        X,2026-06-01,deepseek-v4-pro,ccc,sk-45e26...,input_cache_hit_tokens,0.000000025,129664\n\
-                        X,2026-06-01,deepseek-v4-pro,ccc,sk-45e26...,input_cache_miss_tokens,0.000003,256722\n\
-                        X,2026-06-01,deepseek-v4-pro,vael,sk-55d82...,input_cache_miss_tokens,0.000003,75933";
+                        X,2026-06-01,deepseek-v4-pro,ccc,sk-test1...,input_cache_hit_tokens,0.000000025,237281408\n\
+                        X,2026-06-01,deepseek-v4-pro,ccc,sk-test1...,input_cache_miss_tokens,0.000003,9459428\n\
+                        X,2026-06-01,deepseek-v4-pro,ccc,sk-test2...,input_cache_hit_tokens,0.000000025,58469248\n\
+                        X,2026-06-01,deepseek-v4-pro,ccc,sk-test2...,input_cache_miss_tokens,0.000003,4743424\n\
+                        X,2026-06-01,deepseek-v4-pro,ccc,sk-test3...,input_cache_hit_tokens,0.000000025,129664\n\
+                        X,2026-06-01,deepseek-v4-pro,ccc,sk-test3...,input_cache_miss_tokens,0.000003,256722\n\
+                        X,2026-06-01,deepseek-v4-pro,vael,sk-test4...,input_cache_miss_tokens,0.000003,75933";
         let dir = std::env::temp_dir();
         let path = dir.join("test_hit_rate.csv");
         fs::write(&path, csv).unwrap();
