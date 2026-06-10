@@ -1,6 +1,6 @@
 [package]
 name = "deepseek-monitor"
-version = "0.1.0"
+version = "1.0.1"
 description = "DeepSeek Monitor - Windows tray app"
 authors = ["you"]
 license = ""

@@ -70,19 +70,13 @@ pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Erro
                     if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
                     } else {
-                        // Multi-monitor aware positioning: find the monitor
-                        // that contains the current cursor position (which
-                        // is where the user just clicked the tray icon).
-                        let ws = window.outer_size().unwrap_or(tauri::PhysicalSize {
-                            width: 380,
-                            height: 660,
-                        });
+                        let _ = window.unminimize();
+                        let _ = window.show();
 
-                        let monitors = window.available_monitors().unwrap_or_default();
                         let cursor = window
                             .cursor_position()
                             .unwrap_or(tauri::PhysicalPosition { x: 0.0, y: 0.0 });
-
+                        let monitors = window.available_monitors().unwrap_or_default();
                         let target = monitors
                             .iter()
                             .find(|m| {
@@ -99,18 +93,13 @@ pub fn create_tray(app: &AppHandle) -> Result<TrayIcon, Box<dyn std::error::Erro
                             let size = monitor.size();
                             let pos = monitor.position();
                             let scale = monitor.scale_factor();
-                            let x = (pos.x as f64 + size.width as f64 / scale
-                                - ws.width as f64
-                                - 12.0)
-                                .max(0.0);
-                            let y = (pos.y as f64 + size.height as f64 / scale
-                                - ws.height as f64
-                                - 12.0)
-                                .max(0.0);
-                            let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
+                            let win_w = (380.0 * scale) as i32;
+                            let win_h = (660.0 * scale) as i32;
+                            let gap = (12.0 * scale) as i32;
+                            let x = (pos.x + size.width as i32 - win_w - gap).max(pos.x);
+                            let y = (pos.y + size.height as i32 - win_h - gap).max(pos.y);
+                            let _ = window.set_position(PhysicalPosition::new(x, y));
                         }
-                        let _ = window.unminimize();
-                        let _ = window.show();
                         let _ = window.set_focus();
                     }
                 }
