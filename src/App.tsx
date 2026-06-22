@@ -72,12 +72,6 @@ export default function App() {
       }
     }).then((fn) => unlisteners.push(fn));
 
-    getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused) {
-        getCurrentWindow().hide();
-      }
-    });
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && useAppStore.getState().showSettings) {
         setShowSettings(false);

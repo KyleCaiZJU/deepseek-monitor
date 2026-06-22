@@ -71,6 +71,19 @@ body {
   justify-content: space-between;
   padding: 10px 14px 6px;
   flex-shrink: 0;
+  cursor: grab;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.titlebar:active {
+  cursor: grabbing;
+}
+
+.titlebar button,
+.titlebar .btn-icon {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .titlebar-left {

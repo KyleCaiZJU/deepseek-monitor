@@ -32,3 +32,6 @@ tracking/
 .env
 .env.*
 *.pem
+
+# Local dev scripts (machine-specific absolute paths)
+dev.ps1
