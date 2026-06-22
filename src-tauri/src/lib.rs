@@ -208,13 +208,32 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn dirs_data_dir() -> String {
-    std::env::var("APPDATA")
-        .map(|p| {
-            std::path::Path::new(&p)
-                .join("deepseek-monitor")
-                .to_string_lossy()
-                .to_string()
-        })
-        .unwrap_or_else(|_| ".".into())
+pub(crate) fn dirs_data_dir() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        return std::env::var("APPDATA")
+            .map(|p| {
+                std::path::Path::new(&p)
+                    .join("deepseek-monitor")
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_else(|_| ".".into());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        dirs::data_dir()
+            .map(|p| {
+                p.join("deepseek-monitor")
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_else(|| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+                std::path::Path::new(&home)
+                    .join(".local/share/deepseek-monitor")
+                    .to_string_lossy()
+                    .to_string()
+            })
+    }
 }
