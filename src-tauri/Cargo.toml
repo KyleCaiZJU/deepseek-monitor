@@ -1,7 +1,7 @@
 [package]
 name = "deepseek-monitor"
 version = "1.0.1"
-description = "DeepSeek Monitor - Windows tray app"
+description = "DeepSeek Monitor - cross-platform tray app (Windows & Ubuntu)"
 authors = ["you"]
 license = ""
 repository = ""
@@ -26,6 +26,7 @@ tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 
 csv = "1.3"
+dirs = "6"
 rusqlite = { version = "0.32", features = ["bundled"] }
 rust_decimal = { version = "1", features = ["serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }

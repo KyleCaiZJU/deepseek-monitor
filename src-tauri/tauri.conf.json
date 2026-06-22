@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DeepSeek 监控",
+        "title": "DeepSeek Monitor",
         "width": 380,
         "height": 660,
         "resizable": false,
@@ -40,6 +40,9 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "linux": {
+      "targets": ["appimage", "deb"]
     }
   },
   "plugins": {}

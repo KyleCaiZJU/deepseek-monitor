@@ -69,14 +69,29 @@ impl Default for Settings {
 }
 
 fn dirs_download() -> String {
-    std::env::var("USERPROFILE")
-        .map(|p| {
-            std::path::Path::new(&p)
-                .join("Downloads")
-                .to_string_lossy()
-                .to_string()
-        })
-        .unwrap_or_else(|_| ".".into())
+    #[cfg(target_os = "windows")]
+    {
+        return std::env::var("USERPROFILE")
+            .map(|p| {
+                std::path::Path::new(&p)
+                    .join("Downloads")
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_else(|_| ".".into());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        dirs::download_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+                std::path::Path::new(&home)
+                    .join("Downloads")
+                    .to_string_lossy()
+                    .to_string()
+            })
+    }
 }
 
 #[tauri::command]
@@ -163,20 +178,18 @@ pub async fn save_settings(
     }
 
     // C13: Dual-path persistence -- also write to plain JSON file alongside the DB
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let backup_dir = std::path::Path::new(&appdata).join("deepseek-monitor");
-        let _ = std::fs::create_dir_all(&backup_dir);
-        let backup_path = backup_dir.join("settings.json");
-        match serde_json::to_string_pretty(&settings) {
-            Ok(json_str) => {
-                if let Err(e) = std::fs::write(&backup_path, &json_str) {
-                    log::warn!("Failed to write backup settings.json: {e}");
-                } else {
-                    log::info!("Backup settings.json written to {}", backup_path.display());
-                }
+    let backup_dir = crate::dirs_data_dir();
+    let _ = std::fs::create_dir_all(&backup_dir);
+    let backup_path = std::path::Path::new(&backup_dir).join("settings.json");
+    match serde_json::to_string_pretty(&settings) {
+        Ok(json_str) => {
+            if let Err(e) = std::fs::write(&backup_path, &json_str) {
+                log::warn!("Failed to write backup settings.json: {e}");
+            } else {
+                log::info!("Backup settings.json written to {}", backup_path.display());
             }
-            Err(e) => log::warn!("Failed to serialize settings for backup: {e}"),
         }
+        Err(e) => log::warn!("Failed to serialize settings for backup: {e}"),
     }
 
     Ok(())
