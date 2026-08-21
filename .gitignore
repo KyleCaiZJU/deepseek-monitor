@@ -41,3 +41,4 @@ dev.ps1
 
 # DSH doublecheck spec artifacts
 doublecheck-spec.md
+doublecheck-report.md
