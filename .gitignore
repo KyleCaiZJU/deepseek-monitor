@@ -35,3 +35,9 @@ tracking/
 
 # Local dev scripts (machine-specific absolute paths)
 dev.ps1
+
+# DSH agent internal state (file-claim registry)
+.dsh-file-claim/
+
+# DSH doublecheck spec artifacts
+doublecheck-spec.md
