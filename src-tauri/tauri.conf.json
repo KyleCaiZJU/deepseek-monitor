@@ -15,13 +15,13 @@
         "title": "DeepSeek Monitor",
         "width": 380,
         "height": 660,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "skipTaskbar": true,
-        "alwaysOnTop": false,
-        "visible": false,
-        "focus": false
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "skipTaskbar": false,
+        "alwaysOnTop": true,
+        "visible": true,
+        "focus": true
       }
     ],
     "security": {
@@ -40,9 +40,6 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
-    },
-    "linux": {
-      "targets": ["appimage", "deb"]
     }
   },
   "plugins": {}
